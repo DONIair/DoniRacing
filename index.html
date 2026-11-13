@@ -214,7 +214,7 @@
       const flame=new THREE.Mesh(new THREE.ConeGeometry(.19,.9,8),new THREE.MeshBasicMaterial({color:0xff9d00,transparent:true,opacity:.88}));flame.rotation.x=-Math.PI/2;flame.position.set(0,.76,-2.14);flame.visible=false;body.add(flame);
       root.userData={body,wheels,wing,wingPlane,flame,isPlayer};scene.add(root);return root;
     }
-    const cars=carColors.map((c,i)=>({mesh:makeCar(c,i===0),color:c,isPlayer:i===0,progress:0,lateral:0,speed:0,steer:0,tire:100,lap:0,lapTime:0,best:Infinity,finished:false,penalty:0,penaltyTimer:0,pitTimer:0,pitting:false,drs:false,baseOffset:[0,0,0,0,0,0][i],phase:Math.random()*6}));
+    const cars=carColors.map((c,i)=>({mesh:makeCar(c,i===0),color:c,isPlayer:i===0,progress:0,lateral:0,speed:0,steer:0,heading:Math.atan2(sample(-i*5.4).t.x,sample(-i*5.4).t.z),tire:100,lap:0,lapTime:0,best:Infinity,finished:false,penalty:0,penaltyTimer:0,pitTimer:0,pitting:false,drs:false,baseOffset:[0,0,0,0,0,0][i],phase:Math.random()*6}));
     // Starting grid on the main straight.
     const grid=[-3.2,3.2,-3.2,3.2,-3.2,3.2];
     cars.forEach((car,i)=>{car.progress=-i*5.4;car.lateral=grid[i];});
@@ -244,7 +244,7 @@
       totalLaps=Number($('lapsSelect').value);difficulty=$('difficulty').value;
       penaltyNotice=false;
       const pace={rookie:.83,pro:1,legend:1.12}[difficulty];
-      cars.forEach((c,i)=>{c.progress=-i*5.4;c.lateral=grid[i];c.speed=0;c.steer=0;c.tire=100;c.lap=0;c.lapTime=0;c.best=Infinity;c.finished=false;c.penalty=0;c.penaltyTimer=0;c.pitTimer=0;c.pitting=false;c.drs=false;c.phase=Math.random()*6;c.aiPace=pace*(.96+Math.random()*.08);});
+      cars.forEach((c,i)=>{c.progress=-i*5.4;c.lateral=grid[i];c.speed=0;c.steer=0;c.heading=Math.atan2(sample(c.progress).t.x,sample(c.progress).t.z);c.tire=100;c.lap=0;c.lapTime=0;c.best=Infinity;c.finished=false;c.penalty=0;c.penaltyTimer=0;c.pitTimer=0;c.pitting=false;c.drs=false;c.phase=Math.random()*6;c.aiPace=pace*(.96+Math.random()*.08);});
       raceTime=0;bestOverall=Infinity;raceState='lights';$('overlay').style.display='none';$('result').style.display='none';$('hud').style.display='block';setLights(0);showToast('BEREIT MACHEN',900);
       let light=0;const sequence=()=>{if(raceState!=='lights')return;if(light<5){light++;setLights(light);beep(680,.13);setTimeout(sequence,650);}else{setTimeout(()=>{if(raceState!=='lights')return;setLights(0);raceState='race';beep(1100,.38);showToast('LOS! · GO GO GO',1700);},850);}};setTimeout(sequence,700);
     }
@@ -277,13 +277,21 @@
     function updateCarPose(car,dt){
       const {p,t,n}=sample(car.progress),side=p.clone().addScaledVector(n,car.lateral);
       car.mesh.position.set(side.x,.02,side.z);
-      let heading=Math.atan2(t.x,t.z);
-      if(car.isPlayer&&car.speed>1)heading+=car.steer*.13*(car.speed/25);
+      const heading=car.isPlayer?car.heading:Math.atan2(t.x,t.z);
       car.mesh.rotation.y=heading;car.mesh.userData.body.rotation.z=car.isPlayer?-car.steer*.065:Math.sin(raceTime*1.5+car.phase)*.015;
       car.mesh.userData.wheels.forEach(w=>{if(w.front)w.group.rotation.y=car.isPlayer?car.steer*.38:0;});
       car.mesh.userData.wing.rotation.x=car.drs?-.35:0;
       car.mesh.userData.flame.visible=car.isPlayer&&car.drs&&car.speed>14;
       if(car.mesh.userData.flame.visible){car.mesh.userData.flame.scale.setScalar(.7+Math.random()*.65);}
+    }
+    function projectPlayerPosition(car,x,z){
+      let bestDistance=Infinity,bestProgress=car.progress,bestLateral=car.lateral;
+      for(let offset=-24;offset<=24;offset++){
+        const distance=car.progress+offset*.75,{p,n}=sample(distance),dx=x-p.x,dz=z-p.z;
+        const squared=dx*dx+dz*dz;
+        if(squared<bestDistance){bestDistance=squared;bestProgress=distance;bestLateral=dx*n.x+dz*n.z;}
+      }
+      car.progress=bestProgress;car.lateral=bestLateral;
     }
     function servicePit(car,dt){
       const {p,n}=sample(car.progress),pos=p.clone().addScaledVector(n,car.lateral),dx=pos.x-pitCenter.x,dz=pos.z-pitCenter.z;
@@ -310,7 +318,8 @@
         if(car.finished){updateCarPose(car,dt);return;}
         car.lapTime+=raceState==='race'?dt:0;
         if(i===0&&raceState==='race'){
-          car.steer=input.steer*Number($('sensitivity').value);
+          const steeringLimit=Number($('sensitivity').value);
+          car.steer+=(input.steer*steeringLimit-car.steer)*Math.min(1,dt*7);
           const at=sample(car.progress),ahead=sample(car.progress+24),bend=at.t.angleTo(ahead.t),straight=bend<.27;
           let slip=0;for(let j=1;j<cars.length;j++){let gap=cars[j].progress-car.progress;if(gap>trackLength/2)gap-=trackLength;if(gap< -trackLength/2)gap+=trackLength;if(gap>0&&gap<17&&Math.abs(cars[j].lateral-car.lateral)<5){slip=.12*(1-gap/17);break;}}
           car.drs=input.drs&&straight&&!car.pitting;
@@ -319,8 +328,12 @@
           if(input.brake)car.speed-=dt*22;else if(!input.throttle)car.speed-=dt*2.7;
           car.speed=Math.max(0,Math.min(top,car.speed));
           if(car.penaltyTimer>0){car.penaltyTimer=Math.max(0,car.penaltyTimer-dt);car.speed=0;}
-          car.lateral+=car.steer*car.speed*dt*.29*grip;
-          car.lateral*=1-dt*(Math.abs(car.steer)<.1?.055:.009);
+          const {p,n}=sample(car.progress);
+          const position=p.clone().addScaledVector(n,car.lateral);
+          car.heading+=car.steer*car.speed*dt*.045*grip;
+          position.x+=Math.sin(car.heading)*car.speed*dt;
+          position.z+=Math.cos(car.heading)*car.speed*dt;
+          projectPlayerPosition(car,position.x,position.z);
           if(Math.abs(car.lateral)>roadWidth/2-1){car.speed=Math.max(0,car.speed-dt*7);car.tire=Math.max(0,car.tire-dt*.65);if(Math.abs(car.lateral)>roadWidth/2+3)car.speed=Math.max(0,car.speed-dt*10);}
           car.tire=Math.max(0,car.tire-dt*(.018+Math.abs(car.steer)*.038+(car.speed>24?.025:0)));
           if(Math.abs(car.steer)>.65&&car.speed>16)squealGain.gain.setTargetAtTime(muted?0:.035, audioCtx.currentTime,.08);else squealGain.gain.setTargetAtTime(0,audioCtx.currentTime,.12);
@@ -352,7 +365,7 @@
       drawMap();
     }
     function updateCamera(dt){
-      const car=cars[0],{p,t,n}=sample(car.progress),center=p.clone().addScaledVector(n,car.lateral),heading=Math.atan2(t.x,t.z)+(car.isPlayer?(car.steer||0)*.1:0);
+      const car=cars[0],{p,t,n}=sample(car.progress),center=p.clone().addScaledVector(n,car.lateral),heading=car.heading;
       const forward=new THREE.Vector3(Math.sin(heading),0,Math.cos(heading));
       let target,look;
       if(cameraMode===0){target=center.clone().addScaledVector(forward,-10).add(new THREE.Vector3(0,5.1,0));look=center.clone().addScaledVector(forward,7).add(new THREE.Vector3(0,1.1,0));}
