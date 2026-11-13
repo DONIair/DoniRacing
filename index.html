@@ -214,7 +214,7 @@
       const flame=new THREE.Mesh(new THREE.ConeGeometry(.19,.9,8),new THREE.MeshBasicMaterial({color:0xff9d00,transparent:true,opacity:.88}));flame.rotation.x=-Math.PI/2;flame.position.set(0,.76,-2.14);flame.visible=false;body.add(flame);
       root.userData={body,wheels,wing,wingPlane,flame,isPlayer};scene.add(root);return root;
     }
-    const cars=carColors.map((c,i)=>({mesh:makeCar(c,i===0),color:c,isPlayer:i===0,progress:0,lateral:0,speed:0,tire:100,lap:0,lapTime:0,best:Infinity,finished:false,penalty:0,penaltyTimer:0,pitTimer:0,pitting:false,drs:false,baseOffset:[0,0,0,0,0,0][i],phase:Math.random()*6}));
+    const cars=carColors.map((c,i)=>({mesh:makeCar(c,i===0),color:c,isPlayer:i===0,progress:0,lateral:0,speed:0,steer:0,tire:100,lap:0,lapTime:0,best:Infinity,finished:false,penalty:0,penaltyTimer:0,pitTimer:0,pitting:false,drs:false,baseOffset:[0,0,0,0,0,0][i],phase:Math.random()*6}));
     // Starting grid on the main straight.
     const grid=[-3.2,3.2,-3.2,3.2,-3.2,3.2];
     cars.forEach((car,i)=>{car.progress=-i*5.4;car.lateral=grid[i];});
@@ -244,7 +244,7 @@
       totalLaps=Number($('lapsSelect').value);difficulty=$('difficulty').value;
       penaltyNotice=false;
       const pace={rookie:.83,pro:1,legend:1.12}[difficulty];
-      cars.forEach((c,i)=>{c.progress=-i*5.4;c.lateral=grid[i];c.speed=0;c.tire=100;c.lap=0;c.lapTime=0;c.best=Infinity;c.finished=false;c.penalty=0;c.penaltyTimer=0;c.pitTimer=0;c.pitting=false;c.drs=false;c.phase=Math.random()*6;c.aiPace=pace*(.96+Math.random()*.08);});
+      cars.forEach((c,i)=>{c.progress=-i*5.4;c.lateral=grid[i];c.speed=0;c.steer=0;c.tire=100;c.lap=0;c.lapTime=0;c.best=Infinity;c.finished=false;c.penalty=0;c.penaltyTimer=0;c.pitTimer=0;c.pitting=false;c.drs=false;c.phase=Math.random()*6;c.aiPace=pace*(.96+Math.random()*.08);});
       raceTime=0;bestOverall=Infinity;raceState='lights';$('overlay').style.display='none';$('result').style.display='none';$('hud').style.display='block';setLights(0);showToast('BEREIT MACHEN',900);
       let light=0;const sequence=()=>{if(raceState!=='lights')return;if(light<5){light++;setLights(light);beep(680,.13);setTimeout(sequence,650);}else{setTimeout(()=>{if(raceState!=='lights')return;setLights(0);raceState='race';beep(1100,.38);showToast('LOS! · GO GO GO',1700);},850);}};setTimeout(sequence,700);
     }
@@ -352,7 +352,7 @@
       drawMap();
     }
     function updateCamera(dt){
-      const car=cars[0],{p,t,n}=sample(car.progress),center=p.clone().addScaledVector(n,car.lateral),heading=Math.atan2(t.x,t.z)+(car.isPlayer?car.steer*.1:0);
+      const car=cars[0],{p,t,n}=sample(car.progress),center=p.clone().addScaledVector(n,car.lateral),heading=Math.atan2(t.x,t.z)+(car.isPlayer?(car.steer||0)*.1:0);
       const forward=new THREE.Vector3(Math.sin(heading),0,Math.cos(heading));
       let target,look;
       if(cameraMode===0){target=center.clone().addScaledVector(forward,-10).add(new THREE.Vector3(0,5.1,0));look=center.clone().addScaledVector(forward,7).add(new THREE.Vector3(0,1.1,0));}
